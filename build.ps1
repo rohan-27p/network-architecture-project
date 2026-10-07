@@ -21,4 +21,6 @@ Write-Host ""
 Write-Host "  Test with the client:"
 Write-Host "    .\bcurl.exe -v localhost:9000/index.html" -ForegroundColor White
 Write-Host "    .\bcurl.exe -v localhost:9000/hello.txt"  -ForegroundColor White
+Write-Host "  Save frames for xxd:"
+Write-Host "    .\bcurl.exe --dump-frames hello localhost:9000/hello.txt" -ForegroundColor White
 Write-Host ""

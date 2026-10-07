@@ -122,12 +122,17 @@ $ ./bserve <root_dir> <port>
 ## Client (`bcurl`)
 
 ```
-$ ./bcurl [-v] <host>:<port>/<path>
+$ ./bcurl [-v] [--dump-frames <prefix>] <host>:<port>/<path>
 ```
 
 1. Connect to the server. One connection only.
 2. Build a REQUEST frame with `:method=GET` and `:path=<whatever>`.
 3. Send it, read the response.
 4. Dump the body to stdout.
-5. If `-v` is set, hexdump all frames to stderr so you can see every byte.
+5. If `-v` is set, print the request and response hex trace to stderr.
 6. Exit 0 on success, exit 1 on 4xx/5xx.
+
+`--dump-frames hello` saves `hello-request.bin` and `hello-response.bin`,
+including each 8-byte frame header. Use `xxd -g 1` to inspect them. The prefix
+can include an existing directory; reusing it overwrites the previous captures.
+If a capture cannot be written, the client reports the error and exits 1.

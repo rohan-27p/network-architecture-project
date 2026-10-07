@@ -1,7 +1,7 @@
 /*
  * bcurl.c — Binary HTTP Client
  *
- * Usage:  ./bcurl [-v] <host>:<port>/<path>
+ * Usage:  ./bcurl [-v] [--dump-frames <prefix>] <host>:<port>/<path>
  *
  * Behaviour:
  *   - Opens ONE TCP connection (never a second one).
@@ -9,6 +9,7 @@
  *   - Sends it, reads the response frame.
  *   - Prints the response body to stdout.
  *   - With -v, hexdumps every frame to stderr.
+ *   - With --dump-frames, saves raw request/response bytes for xxd.
  *   - Exits non-zero on 4xx / 5xx status codes.
  *   - Unknown response frame types are skipped cleanly.
  */
@@ -54,22 +55,60 @@ static int parse_url(const char *url,
     return 0;
 }
 
+/* Save bytes as-is. xxd can handle the pretty-printing. */
+static int save_frame(const char *prefix, const char *direction,
+                      const uint8_t *header, const uint8_t *payload,
+                      size_t payload_len) {
+    size_t path_len = strlen(prefix) + strlen(direction) + 6;
+    char *filename = malloc(path_len);
+    if (!filename) {
+        fprintf(stderr, "Error: out of memory saving frame\n");
+        return -1;
+    }
+    snprintf(filename, path_len, "%s-%s.bin", prefix, direction);
+    FILE *file = fopen(filename, "wb");
+    if (!file) {
+        perror(filename);
+        free(filename);
+        return -1;
+    }
+    int failed = fwrite(header, 1, FRAME_HEADER_SIZE, file) != FRAME_HEADER_SIZE;
+    if (!failed && payload_len > 0)
+        failed = fwrite(payload, 1, payload_len, file) != payload_len;
+    if (fclose(file) != 0) failed = 1;
+    if (failed) fprintf(stderr, "Error: could not save %s\n", filename);
+    free(filename);
+    return failed ? -1 : 0;
+}
+
 /* ── main ─────────────────────────────────────────────────────────── */
 
 int main(int argc, char *argv[]) {
     int         verbose = 0;
     const char *url     = NULL;
+    const char *dump_prefix = NULL;
 
     /* Parse CLI arguments */
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-v") == 0)
             verbose = 1;
+        else if (strcmp(argv[i], "--dump-frames") == 0) {
+            if (i + 1 >= argc || argv[i + 1][0] == '-') {
+                fprintf(stderr, "Error: --dump-frames needs a file prefix\n");
+                return 1;
+            }
+            dump_prefix = argv[++i];
+        }
+        else if (argv[i][0] == '-' || url) {
+            fprintf(stderr, "Error: unexpected argument '%s'\n", argv[i]);
+            return 1;
+        }
         else
             url = argv[i];
     }
 
     if (!url) {
-        fprintf(stderr, "Usage: %s [-v] <host>:<port>/<path>\n", argv[0]);
+        fprintf(stderr, "Usage: %s [-v] [--dump-frames <prefix>] <host>:<port>/<path>\n", argv[0]);
         return 1;
     }
 
@@ -186,6 +225,11 @@ int main(int argc, char *argv[]) {
     }
 
     /* ── Send request ─────────────────────────────────────────────── */
+    if (dump_prefix && save_frame(dump_prefix, "request", wire_hdr, payload, plen) < 0) {
+        sock_close(sock);
+        sock_cleanup();
+        return 1;
+    }
     if (write_exact(sock, wire_hdr, FRAME_HEADER_SIZE) < 0 ||
         write_exact(sock, payload, plen) < 0) {
         fprintf(stderr, "Error: failed to send request\n");
@@ -259,6 +303,14 @@ int main(int argc, char *argv[]) {
             sock_cleanup();
             return 1;
         }
+    }
+
+    if (dump_prefix && save_frame(dump_prefix, "response", resp_raw,
+                                  resp_payload, resp_fh.length) < 0) {
+        free(resp_payload);
+        sock_close(sock);
+        sock_cleanup();
+        return 1;
     }
 
     /* Verbose: hexdump the incoming response */

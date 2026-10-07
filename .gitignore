@@ -11,3 +11,7 @@
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local frame captures for xxd
+*-request.bin
+*-response.bin
