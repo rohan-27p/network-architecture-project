@@ -1,0 +1,13 @@
+# Binaries and object files
+*.exe
+*.o
+*.obj
+*.dll
+*.so
+*.dylib
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
